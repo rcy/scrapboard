@@ -254,9 +254,11 @@ func page() g.Node {
 				}
 				#canvas {
 					flex: 1;
-					background: #f5f0e8;
-					background-image: radial-gradient(#ccc 1px, transparent 1px);
-					background-size: 20px 20px;
+					background: #ddd8ce;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					overflow: hidden;
 				}
 				#toolbar {
 					width: 48px;
@@ -457,15 +459,45 @@ func page() g.Node {
 			),
 			g.El("script", g.Raw(`
 				var canvasEl = document.getElementById('canvas');
+				var BOARD_W = 1600, BOARD_H = 1000;
 
 				var stage = new Konva.Stage({
 					container: 'canvas',
-					width: canvasEl.offsetWidth,
-					height: canvasEl.offsetHeight,
+					width: BOARD_W,
+					height: BOARD_H,
 				});
+
+				// Board background
+				var bgLayer = new Konva.Layer({ listening: false });
+				bgLayer.add(new Konva.Rect({
+					x: 0, y: 0, width: BOARD_W, height: BOARD_H,
+					fill: '#f5f0e8',
+					fillPatternImage: (function() {
+						var c = document.createElement('canvas');
+						c.width = 20; c.height = 20;
+						var ctx = c.getContext('2d');
+						ctx.fillStyle = '#f5f0e8';
+						ctx.fillRect(0, 0, 20, 20);
+						ctx.fillStyle = '#ccc';
+						ctx.beginPath();
+						ctx.arc(0, 0, 1, 0, Math.PI * 2);
+						ctx.fill();
+						return c;
+					})(),
+					fillPatternRepeat: 'repeat',
+				}));
+				stage.add(bgLayer);
 
 				var layer = new Konva.Layer();
 				stage.add(layer);
+
+				function fitStage() {
+					var scale = Math.min(canvasEl.offsetWidth / BOARD_W, canvasEl.offsetHeight / BOARD_H);
+					stage.width(Math.floor(BOARD_W * scale));
+					stage.height(Math.floor(BOARD_H * scale));
+					stage.scale({ x: scale, y: scale });
+				}
+				fitStage();
 
 				var tr = new Konva.Transformer({
 					keepRatio: true,
@@ -543,10 +575,7 @@ func page() g.Node {
 					}
 				});
 
-				window.addEventListener('resize', function() {
-					stage.width(canvasEl.offsetWidth);
-					stage.height(canvasEl.offsetHeight);
-				});
+				window.addEventListener('resize', fitStage);
 
 				// --- Image helpers ---
 
@@ -596,8 +625,8 @@ func page() g.Node {
 						var w = imageObj.width * scale;
 						var h = imageObj.height * scale;
 						addKonvaImage(imageObj, url, {
-							x: Math.random() * Math.max(0, stage.width() - w),
-							y: Math.random() * Math.max(0, stage.height() - h),
+							x: Math.random() * Math.max(0, BOARD_W - w),
+							y: Math.random() * Math.max(0, BOARD_H - h),
 							width: w,
 							height: h,
 							rotation: (Math.random() * 30) - 15,
