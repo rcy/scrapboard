@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"time"
 
 	g "maragu.dev/gomponents"
 	c "maragu.dev/gomponents/components"
@@ -30,6 +32,11 @@ type board struct {
 	Items []boardItem `json:"items"`
 }
 
+type boardMeta struct {
+	ID        string    `json:"id"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 var validID = regexp.MustCompile(`^[a-f0-9]{16}$`)
 
 func generateID() string {
@@ -43,6 +50,46 @@ func boardPath(id string) (string, bool) {
 		return "", false
 	}
 	return filepath.Join("data/boards", id+".json"), true
+}
+
+func handleListBoards(w http.ResponseWriter, r *http.Request) {
+	entries, err := os.ReadDir("data/boards")
+	if err != nil {
+		if os.IsNotExist(err) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("[]"))
+			return
+		}
+		http.Error(w, "error listing boards", http.StatusInternalServerError)
+		return
+	}
+
+	var boards []boardMeta
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".json")
+		if !validID.MatchString(id) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		boards = append(boards, boardMeta{ID: id, UpdatedAt: info.ModTime()})
+	}
+
+	sort.Slice(boards, func(i, j int) bool {
+		return boards[i].UpdatedAt.After(boards[j].UpdatedAt)
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(boards)
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -298,6 +345,73 @@ func page() g.Node {
 					font-size: 0.9em;
 				}
 				.close-btn:hover { background: #f5f5f5; }
+				#boards-modal {
+					display: none;
+					position: fixed;
+					inset: 0;
+					background: rgba(0,0,0,0.45);
+					z-index: 100;
+					align-items: center;
+					justify-content: center;
+				}
+				#boards-modal.open { display: flex; }
+				#boards-dialog {
+					background: #fff;
+					border-radius: 10px;
+					padding: 24px;
+					width: 420px;
+					max-width: 90vw;
+					max-height: 80vh;
+					display: flex;
+					flex-direction: column;
+					gap: 16px;
+					box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+				}
+				#boards-dialog h2 { font-size: 1.1em; color: #222; }
+				#boards-list {
+					display: flex;
+					flex-direction: column;
+					gap: 8px;
+					overflow-y: auto;
+				}
+				.board-item {
+					display: flex;
+					align-items: center;
+					gap: 12px;
+					padding: 12px 14px;
+					border: 1px solid #eee;
+					border-radius: 8px;
+					cursor: pointer;
+					transition: background 0.12s, border-color 0.12s;
+				}
+				.board-item:hover { background: #f5f5f5; border-color: #ddd; }
+				.board-item.current { border-color: #4a9eff; background: #f0f7ff; }
+				.board-icon {
+					width: 36px;
+					height: 36px;
+					border-radius: 8px;
+					background: #e8e0d5;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					flex-shrink: 0;
+					font-size: 18px;
+				}
+				.board-info { flex: 1; min-width: 0; }
+				.board-info strong { display: block; font-size: 0.9em; color: #222; }
+				.board-info span { font-size: 0.78em; color: #999; }
+				.boards-empty { text-align: center; color: #aaa; font-size: 0.9em; padding: 24px 0; }
+				#boards-footer { display: flex; justify-content: flex-end; }
+				#boards-footer button {
+					padding: 8px 14px;
+					background: transparent;
+					color: #666;
+					border: 1px solid #ddd;
+					border-radius: 6px;
+					cursor: pointer;
+					font-size: 0.9em;
+				}
+				#boards-footer button:hover { background: #f5f5f5; }
 			`)),
 		},
 		Body: []g.Node{
@@ -315,6 +429,15 @@ func page() g.Node {
 						g.Attr("class", "tool-btn"),
 						g.Attr("title", "Upload image"),
 						g.Raw(`<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`),
+					),
+				),
+			),
+			h.Div(h.ID("boards-modal"),
+				h.Div(h.ID("boards-dialog"),
+					h.H2(g.Text("Boards")),
+					h.Div(h.ID("boards-list")),
+					h.Div(h.ID("boards-footer"),
+						h.Button(h.ID("boards-close"), g.Text("Cancel")),
 					),
 				),
 			),
@@ -564,8 +687,52 @@ func page() g.Node {
 						.catch(function(err) { console.error('load failed', err); });
 				}
 
+				// --- Boards list modal ---
+
+				var boardsModal = document.getElementById('boards-modal');
+
+				function openBoardsList() {
+					fetch('/api/boards')
+						.then(function(r) { return r.json(); })
+						.then(function(boards) {
+							var list = document.getElementById('boards-list');
+							list.innerHTML = '';
+							if (!boards.length) {
+								list.innerHTML = '<p class="boards-empty">No saved boards yet.</p>';
+							} else {
+								var currentId = getBoardId();
+								boards.forEach(function(b) {
+									var d = new Date(b.updatedAt);
+									var dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+									var timeStr = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+									var item = document.createElement('div');
+									item.className = 'board-item' + (b.id === currentId ? ' current' : '');
+									item.innerHTML =
+										'<div class="board-icon">📋</div>' +
+										'<div class="board-info">' +
+											'<strong>' + b.id.slice(0, 8) + '</strong>' +
+											'<span>Saved ' + dateStr + ' at ' + timeStr + '</span>' +
+										'</div>';
+									item.addEventListener('click', function() {
+										window.location.href = '/b/' + b.id;
+									});
+									list.appendChild(item);
+								});
+							}
+							boardsModal.classList.add('open');
+						})
+						.catch(function(err) { console.error('failed to list boards', err); });
+				}
+
+				document.getElementById('boards-close').addEventListener('click', function() {
+					boardsModal.classList.remove('open');
+				});
+				boardsModal.addEventListener('click', function(e) {
+					if (e.target === boardsModal) boardsModal.classList.remove('open');
+				});
+
 				document.getElementById('save-btn').addEventListener('click', saveBoard);
-				document.getElementById('load-btn').addEventListener('click', loadBoard);
+				document.getElementById('load-btn').addEventListener('click', openBoardsList);
 
 				// Auto-load when arriving at a board URL
 				if (getBoardId()) loadBoard();
@@ -635,6 +802,7 @@ func main() {
 		page().Render(w)
 	})
 	http.HandleFunc("/api/images", handleUpload)
+	http.HandleFunc("GET /api/boards", handleListBoards)
 	http.HandleFunc("POST /api/board", handleCreateBoard)
 	http.HandleFunc("POST /api/board/{id}", handleUpdateBoard)
 	http.HandleFunc("GET /api/board/{id}", handleLoadBoard)
