@@ -14,6 +14,7 @@ func page() g.Node {
 		Title:    "Scrapbook",
 		Language: "en",
 		Head: []g.Node{
+			h.Script(h.Src("https://unpkg.com/konva@9/konva.min.js")),
 			g.El("style", g.Raw(`
 				* { box-sizing: border-box; margin: 0; padding: 0; }
 				body { font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
@@ -26,8 +27,6 @@ func page() g.Node {
 				}
 				#canvas {
 					flex: 1;
-					position: relative;
-					overflow: hidden;
 					background: #f5f0e8;
 					background-image: radial-gradient(#ccc 1px, transparent 1px);
 					background-size: 20px 20px;
@@ -40,6 +39,7 @@ func page() g.Node {
 					align-items: center;
 					padding: 8px 0;
 					gap: 4px;
+					z-index: 10;
 				}
 				.tool-btn {
 					width: 36px;
@@ -55,7 +55,6 @@ func page() g.Node {
 					transition: background 0.15s, color 0.15s;
 				}
 				.tool-btn:hover { background: #444; color: #fff; }
-				/* Modal */
 				#upload-modal {
 					display: none;
 					position: fixed;
@@ -152,44 +151,72 @@ func page() g.Node {
 				),
 			),
 			g.El("script", g.Raw(`
-				var modal = document.getElementById('upload-modal');
+				var canvasEl = document.getElementById('canvas');
+
+				var stage = new Konva.Stage({
+					container: 'canvas',
+					width: canvasEl.offsetWidth,
+					height: canvasEl.offsetHeight,
+				});
+
+				var layer = new Konva.Layer();
+				stage.add(layer);
+
+				window.addEventListener('resize', function() {
+					stage.width(canvasEl.offsetWidth);
+					stage.height(canvasEl.offsetHeight);
+				});
 
 				function addImageToCanvas(blob) {
 					var url = URL.createObjectURL(blob);
-					var canvas = document.getElementById('canvas');
-					var img = document.createElement('img');
-					img.src = url;
-					img.style.position = 'absolute';
-					img.style.maxWidth = '300px';
-					img.style.maxHeight = '300px';
-					img.style.cursor = 'grab';
-					img.style.userSelect = 'none';
-					img.onload = function() {
-						var x = Math.random() * Math.max(0, canvas.offsetWidth - this.offsetWidth);
-						var y = Math.random() * Math.max(0, canvas.offsetHeight - this.offsetHeight);
+					var imageObj = new Image();
+					imageObj.onload = function() {
+						var maxSize = 300;
+						var scale = Math.min(1, maxSize / Math.max(imageObj.width, imageObj.height));
+						var w = imageObj.width * scale;
+						var h = imageObj.height * scale;
+
+						var x = Math.random() * Math.max(0, stage.width() - w);
+						var y = Math.random() * Math.max(0, stage.height() - h);
 						var rot = (Math.random() * 30) - 15;
-						this.style.left = x + 'px';
-						this.style.top = y + 'px';
-						this.style.transform = 'rotate(' + rot + 'deg)';
-						this.style.boxShadow = '2px 4px 12px rgba(0,0,0,0.35)';
+
+						var img = new Konva.Image({
+							x: x,
+							y: y,
+							image: imageObj,
+							width: w,
+							height: h,
+							rotation: rot,
+							shadowColor: 'black',
+							shadowBlur: 12,
+							shadowOpacity: 0.35,
+							shadowOffsetX: 2,
+							shadowOffsetY: 4,
+							draggable: true,
+						});
+
+						img.on('mouseenter', function() {
+							stage.container().style.cursor = 'grab';
+						});
+						img.on('mouseleave', function() {
+							stage.container().style.cursor = 'default';
+						});
+						img.on('dragstart', function() {
+							stage.container().style.cursor = 'grabbing';
+						});
+						img.on('dragend', function() {
+							stage.container().style.cursor = 'grab';
+						});
+
+						layer.add(img);
 					};
-					canvas.appendChild(img);
+					imageObj.src = url;
 				}
 
+				// Modal
+				var modal = document.getElementById('upload-modal');
 				function closeModal() { modal.classList.remove('open'); }
 
-				// Global paste — works on canvas and inside modal
-				document.addEventListener('paste', function(e) {
-					var items = e.clipboardData.items;
-					for (var i = 0; i < items.length; i++) {
-						if (items[i].type.startsWith('image/')) {
-							addImageToCanvas(items[i].getAsFile());
-							if (modal.classList.contains('open')) closeModal();
-						}
-					}
-				});
-
-				// Open/close modal
 				document.getElementById('open-upload-modal').addEventListener('click', function() {
 					modal.classList.add('open');
 				});
@@ -211,7 +238,7 @@ func page() g.Node {
 					}
 				});
 
-				// Drop zone drag-and-drop
+				// Drop zone
 				var dropZone = document.getElementById('drop-zone');
 				dropZone.addEventListener('dragover', function(e) {
 					e.preventDefault();
@@ -230,6 +257,17 @@ func page() g.Node {
 						}
 					}
 					if (files.length) closeModal();
+				});
+
+				// Global paste
+				document.addEventListener('paste', function(e) {
+					var items = e.clipboardData.items;
+					for (var i = 0; i < items.length; i++) {
+						if (items[i].type.startsWith('image/')) {
+							addImageToCanvas(items[i].getAsFile());
+							if (modal.classList.contains('open')) closeModal();
+						}
+					}
 				});
 			`)),
 		},
