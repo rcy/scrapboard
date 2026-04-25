@@ -1,13 +1,82 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	g "maragu.dev/gomponents"
 	c "maragu.dev/gomponents/components"
 	h "maragu.dev/gomponents/html"
 )
+
+func handleUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, "request too large", http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("image")
+	if err != nil {
+		http.Error(w, "missing image field", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Sniff content type from first 512 bytes
+	buf := make([]byte, 512)
+	n, _ := file.Read(buf)
+	ct := http.DetectContentType(buf[:n])
+	if !strings.HasPrefix(ct, "image/") {
+		http.Error(w, "file is not an image", http.StatusBadRequest)
+		return
+	}
+
+	extByType := map[string]string{
+		"image/jpeg": ".jpg",
+		"image/png":  ".png",
+		"image/gif":  ".gif",
+		"image/webp": ".webp",
+	}
+	ext := extByType[ct]
+	if ext == "" {
+		ext = ".png"
+	}
+
+	b := make([]byte, 16)
+	rand.Read(b)
+	filename := hex.EncodeToString(b) + ext
+
+	if err := os.MkdirAll("data/images", 0755); err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+
+	dst, err := os.Create(filepath.Join("data/images", filename))
+	if err != nil {
+		http.Error(w, "storage error", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	// Write sniffed bytes then the rest of the file
+	dst.Write(buf[:n])
+	io.Copy(dst, file)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"url": "/images/" + filename})
+}
 
 func page() g.Node {
 	return c.HTML5(c.HTML5Props{
@@ -183,14 +252,12 @@ func page() g.Node {
 								var lw = h * 0.23;
 								var aw = lw * 1.5;
 
-								// Orange circle background
 								ctx.beginPath();
 								ctx.arc(h, h, h, 0, Math.PI * 2, false);
 								ctx.closePath();
 								ctx.setAttr('fillStyle', '#ff9f43');
 								ctx.fill();
 
-								// 3/4 arc
 								var start = -Math.PI / 2 + 0.45;
 								var end = start + Math.PI * 1.5;
 								ctx.beginPath();
@@ -200,7 +267,6 @@ func page() g.Node {
 								ctx.setAttr('lineCap', 'round');
 								ctx.stroke();
 
-								// Arrowhead at end of arc
 								var ex = h + Math.cos(end) * r;
 								var ey = h + Math.sin(end) * r;
 								var tx = -Math.sin(end);
@@ -246,8 +312,7 @@ func page() g.Node {
 					stage.height(canvasEl.offsetHeight);
 				});
 
-				function addImageToCanvas(blob) {
-					var url = URL.createObjectURL(blob);
+				function placeImage(url) {
 					var imageObj = new Image();
 					imageObj.onload = function() {
 						var maxSize = 300;
@@ -295,6 +360,16 @@ func page() g.Node {
 						layer.add(img);
 					};
 					imageObj.src = url;
+				}
+
+				function addImageToCanvas(blob) {
+					var ext = (blob.type || 'image/png').split('/')[1] || 'png';
+					var fd = new FormData();
+					fd.append('image', blob, 'image.' + ext);
+					fetch('/api/images', { method: 'POST', body: fd })
+						.then(function(r) { return r.json(); })
+						.then(function(data) { placeImage(data.url); })
+						.catch(function(err) { console.error('upload failed', err); });
 				}
 
 				// Modal
@@ -362,6 +437,8 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		page().Render(w)
 	})
+	http.HandleFunc("/api/images", handleUpload)
+	http.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("data/images"))))
 
 	addr := ":8080"
 	log.Printf("listening on http://localhost%s", addr)
