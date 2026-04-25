@@ -162,6 +162,85 @@ func page() g.Node {
 				var layer = new Konva.Layer();
 				stage.add(layer);
 
+				var tr = new Konva.Transformer({
+					keepRatio: true,
+					enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
+					borderStroke: '#4a9eff',
+					borderStrokeWidth: 2,
+					borderDash: [6, 4],
+					anchorFill: '#fff',
+					anchorStroke: '#4a9eff',
+					anchorStrokeWidth: 3,
+					anchorCornerRadius: 11,
+					anchorSize: 22,
+					rotateAnchorOffset: 40,
+					anchorStyleFunc: function(anchor) {
+						if (anchor.hasName('rotater')) {
+							anchor.sceneFunc(function(ctx, shape) {
+								var s = shape.width();
+								var h = s / 2;
+								var r = h * 0.46;
+								var lw = h * 0.23;
+								var aw = lw * 1.5;
+
+								// Orange circle background
+								ctx.beginPath();
+								ctx.arc(h, h, h, 0, Math.PI * 2, false);
+								ctx.closePath();
+								ctx.setAttr('fillStyle', '#ff9f43');
+								ctx.fill();
+
+								// 3/4 arc
+								var start = -Math.PI / 2 + 0.45;
+								var end = start + Math.PI * 1.5;
+								ctx.beginPath();
+								ctx.arc(h, h, r, start, end, false);
+								ctx.setAttr('strokeStyle', '#fff');
+								ctx.setAttr('lineWidth', lw);
+								ctx.setAttr('lineCap', 'round');
+								ctx.stroke();
+
+								// Arrowhead at end of arc
+								var ex = h + Math.cos(end) * r;
+								var ey = h + Math.sin(end) * r;
+								var tx = -Math.sin(end);
+								var ty = Math.cos(end);
+								ctx.beginPath();
+								ctx.moveTo(ex, ey);
+								ctx.lineTo(ex - tx * aw - ty * aw * 0.55, ey - ty * aw + tx * aw * 0.55);
+								ctx.lineTo(ex - tx * aw + ty * aw * 0.55, ey - ty * aw - tx * aw * 0.55);
+								ctx.closePath();
+								ctx.setAttr('fillStyle', '#fff');
+								ctx.fill();
+							});
+							anchor.hitFunc(function(ctx, shape) {
+								var s = shape.width();
+								var h = s / 2;
+								ctx.beginPath();
+								ctx.arc(h, h, h, 0, Math.PI * 2, false);
+								ctx.closePath();
+								ctx.fillStrokeShape(shape);
+							});
+						}
+					},
+				});
+				layer.add(tr);
+
+				stage.on('mousedown', function(e) {
+					if (e.target === stage) tr.nodes([]);
+				});
+
+				document.addEventListener('keydown', function(e) {
+					if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+					var tag = document.activeElement.tagName;
+					if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+					var nodes = tr.nodes();
+					if (nodes.length) {
+						nodes.forEach(function(n) { n.destroy(); });
+						tr.nodes([]);
+					}
+				});
+
 				window.addEventListener('resize', function() {
 					stage.width(canvasEl.offsetWidth);
 					stage.height(canvasEl.offsetHeight);
@@ -195,6 +274,11 @@ func page() g.Node {
 							draggable: true,
 						});
 
+						img.on('click tap', function() {
+							img.moveToTop();
+							tr.moveToTop();
+							tr.nodes([img]);
+						});
 						img.on('mouseenter', function() {
 							stage.container().style.cursor = 'grab';
 						});
