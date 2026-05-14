@@ -856,7 +856,11 @@ func main() {
 	http.HandleFunc("GET /api/board/{id}", handleLoadBoard)
 	http.Handle("/images/", http.StripPrefix("/images/", http.FileServer(http.Dir("data/images"))))
 
-	addr := ":8080"
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
 	log.Printf("listening on http://localhost%s", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
