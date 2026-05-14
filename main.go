@@ -219,7 +219,7 @@ func handleLoadBoard(w http.ResponseWriter, r *http.Request) {
 
 func page() g.Node {
 	return c.HTML5(c.HTML5Props{
-		Title:    "Scrapbook",
+		Title:    "Scrapboard",
 		Language: "en",
 		Head: []g.Node{
 			h.Script(h.Src("https://unpkg.com/konva@9/konva.min.js")),
@@ -418,7 +418,7 @@ func page() g.Node {
 		},
 		Body: []g.Node{
 			h.Header(
-				g.Text("Scrapbook"),
+				g.Text("Scrapboard"),
 				h.Span(g.Text("paste an image to add it")),
 				h.Button(h.ID("load-btn"), g.Text("LOAD")),
 				h.Button(h.ID("save-btn"), g.Text("SAVE")),

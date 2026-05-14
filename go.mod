@@ -1,4 +1,4 @@
-module scrapbook
+module scrapboard
 
 go 1.22.2
 
