@@ -724,7 +724,7 @@ func page() g.Node {
 						})
 						.then(function(data) {
 							tr.nodes([]);
-							layer.getChildren().forEach(function(node) {
+							layer.getChildren().slice().forEach(function(node) {
 								if (node.getClassName() === 'Image') node.destroy();
 							});
 							data.items.forEach(function(item) { restoreImage(item); });
