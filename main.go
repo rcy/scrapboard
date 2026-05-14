@@ -685,8 +685,8 @@ func page() g.Node {
 								url:      node.getAttr('imageUrl'),
 								x:        node.x(),
 								y:        node.y(),
-								width:    node.width(),
-								height:   node.height(),
+								width:    node.width()  * node.scaleX(),
+								height:   node.height() * node.scaleY(),
 								rotation: node.rotation(),
 							});
 						}
