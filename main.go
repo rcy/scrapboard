@@ -572,14 +572,26 @@ func page() g.Node {
 					if (nodes.length) {
 						nodes.forEach(function(n) { n.destroy(); });
 						tr.nodes([]);
+						markDirty();
 					}
 				});
 
 				window.addEventListener('resize', fitStage);
 
+				var dirty = false;
+				function markDirty() { dirty = true; }
+				function markClean() { dirty = false; }
+
+				window.addEventListener('beforeunload', function(e) {
+					if (!dirty) return;
+					e.preventDefault();
+					e.returnValue = '';
+					return '';
+				});
+
 				// --- Image helpers ---
 
-				function addKonvaImage(imageObj, url, state) {
+				function addKonvaImage(imageObj, url, state, skipDirty) {
 					var img = new Konva.Image({
 						x: state.x,
 						y: state.y,
@@ -612,9 +624,12 @@ func page() g.Node {
 					});
 					img.on('dragend', function() {
 						stage.container().style.cursor = 'grab';
+						markDirty();
 					});
+					img.on('transformend', markDirty);
 
 					layer.add(img);
+					if (!skipDirty) markDirty();
 				}
 
 				function placeImage(url) {
@@ -638,7 +653,7 @@ func page() g.Node {
 				function restoreImage(item) {
 					var imageObj = new Image();
 					imageObj.onload = function() {
-						addKonvaImage(imageObj, item.url, item);
+						addKonvaImage(imageObj, item.url, item, true);
 					};
 					imageObj.src = item.url;
 				}
@@ -692,6 +707,7 @@ func page() g.Node {
 						});
 					})
 					.then(function() {
+						markClean();
 						btn.classList.add('saved');
 						setTimeout(function() { btn.classList.remove('saved'); }, 1200);
 					})
@@ -712,6 +728,7 @@ func page() g.Node {
 								if (node.getClassName() === 'Image') node.destroy();
 							});
 							data.items.forEach(function(item) { restoreImage(item); });
+							markClean();
 						})
 						.catch(function(err) { console.error('load failed', err); });
 				}
@@ -743,7 +760,9 @@ func page() g.Node {
 											'<span>Saved ' + dateStr + ' at ' + timeStr + '</span>' +
 										'</div>';
 									item.addEventListener('click', function() {
-										window.location.href = '/b/' + b.id;
+										history.pushState({}, '', '/b/' + b.id);
+										boardsModal.classList.remove('open');
+										loadBoard();
 									});
 									list.appendChild(item);
 								});
