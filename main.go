@@ -591,11 +591,10 @@ func page() g.Node {
 
 				// --- Image helpers ---
 
-				function addKonvaImage(imageObj, url, state, skipDirty) {
+				function makeNode(url, state) {
 					var img = new Konva.Image({
 						x: state.x,
 						y: state.y,
-						image: imageObj,
 						width: state.width,
 						height: state.height,
 						rotation: state.rotation,
@@ -607,7 +606,6 @@ func page() g.Node {
 						draggable: true,
 					});
 					img.setAttr('imageUrl', url);
-
 					img.on('click tap', function() {
 						img.moveToTop();
 						tr.moveToTop();
@@ -627,11 +625,10 @@ func page() g.Node {
 						markDirty();
 					});
 					img.on('transformend', markDirty);
-
-					layer.add(img);
-					if (!skipDirty) markDirty();
+					return img;
 				}
 
+				// Place a new image (upload/paste path)
 				function placeImage(url) {
 					var imageObj = new Image();
 					imageObj.onload = function() {
@@ -639,22 +636,26 @@ func page() g.Node {
 						var scale = Math.min(1, maxSize / Math.max(imageObj.width, imageObj.height));
 						var w = imageObj.width * scale;
 						var h = imageObj.height * scale;
-						addKonvaImage(imageObj, url, {
+						var img = makeNode(url, {
 							x: Math.random() * Math.max(0, BOARD_W - w),
 							y: Math.random() * Math.max(0, BOARD_H - h),
 							width: w,
 							height: h,
 							rotation: (Math.random() * 30) - 15,
 						});
+						img.image(imageObj);
+						layer.add(img);
+						markDirty();
 					};
 					imageObj.src = url;
 				}
 
+				// Restore a saved image — node added to layer synchronously to preserve z-order
 				function restoreImage(item) {
+					var img = makeNode(item.url, item);
+					layer.add(img);
 					var imageObj = new Image();
-					imageObj.onload = function() {
-						addKonvaImage(imageObj, item.url, item, true);
-					};
+					imageObj.onload = function() { img.image(imageObj); };
 					imageObj.src = item.url;
 				}
 
