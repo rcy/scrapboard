@@ -228,7 +228,7 @@ func page() g.Node {
 				body { font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
 				header { padding: 0.75em 1em; background: #333; color: #fff; font-size: 1.1em; display: flex; align-items: center; gap: 1em; }
 				header span { font-size: 0.8em; opacity: 0.6; }
-				#load-btn, #save-btn {
+				#new-btn, #load-btn, #save-btn {
 					padding: 6px 18px;
 					border: none;
 					border-radius: 6px;
@@ -238,8 +238,8 @@ func page() g.Node {
 					cursor: pointer;
 					transition: background 0.15s, color 0.15s;
 				}
-				#load-btn { background: transparent; color: #aaa; border: 1px solid #555; }
-				#load-btn:hover { background: #444; color: #fff; }
+				#new-btn, #load-btn { background: transparent; color: #aaa; border: 1px solid #555; }
+				#new-btn:hover, #load-btn:hover { background: #444; color: #fff; }
 				#save-btn {
 					margin-left: auto;
 					background: #fff;
@@ -420,6 +420,7 @@ func page() g.Node {
 			h.Header(
 				g.Text("Scrapboard"),
 				h.Span(g.Text("paste an image to add it")),
+				h.Button(h.ID("new-btn"), g.Text("NEW")),
 				h.Button(h.ID("load-btn"), g.Text("LOAD")),
 				h.Button(h.ID("save-btn"), g.Text("SAVE")),
 			),
@@ -780,6 +781,15 @@ func page() g.Node {
 					if (e.target === boardsModal) boardsModal.classList.remove('open');
 				});
 
+				document.getElementById('new-btn').addEventListener('click', function() {
+					if (dirty && !confirm('You have unsaved changes. Start a new board anyway?')) return;
+					tr.nodes([]);
+					layer.getChildren().slice().forEach(function(node) {
+						if (node.getClassName() === 'Image') node.destroy();
+					});
+					history.pushState({}, '', '/');
+					markClean();
+				});
 				document.getElementById('save-btn').addEventListener('click', saveBoard);
 				document.getElementById('load-btn').addEventListener('click', openBoardsList);
 
